@@ -1,3 +1,5 @@
+#############
+#### Clear workspace and load libraries and files
 rm(list=ls())
 library(data.table)
 library(rms)
@@ -5,51 +7,41 @@ library(sandwich)
 library(MASS)
 library(survival)
 
-'%!in%' <- function(x,y)!('%in%'(x,y))
-
+#### Load PRS and phenotype data
 load("/users/ameisner/CompositePRS/update20190415/outcomePRS20191016.Rdata") 
 load("/users/ameisner/CompositePRS/update20190415/egfrdata.Rdata") 
 
+#### UKBB participants who have withdrawn consent
 to_exclude <- read.csv("/users/ameisner/CompositePRS/update20190415/w17712_20200204.csv",header=F,stringsAsFactors = F)
-
-######################################################################
-######################################################################
-######### SUMMARIZE DATA
-######################################################################
-######################################################################
+#############
 
 #############
-#### Subset data: only unrelated people of with British ancestry
+#### Subset data: keep only unrelated people of with British ancestry
 alldata_subset <- alldata[which(alldata$tokeep==1),]
-alldata_subset_prev <- merge(alldata_subset,egfrdata,by="subjectID",all.x=TRUE,all.y=FALSE,sort=FALSE)
-alldata_subset <- alldata_subset_prev[which(!(alldata_subset_prev$subjectID %in% to_exclude[,1])),]
-
+alldata_subset_prev <- merge(alldata_subset,egfrdata,by="subjectID",all.x=TRUE,all.y=FALSE,sort=FALSE) ## merge with eGFR data 
+alldata_subset <- alldata_subset_prev[which(!(alldata_subset_prev$subjectID %in% to_exclude[,1])),] ## remove those who have withdrawn consent
 ####### split into male and female
-
 alldata_subsetF <- alldata_subset[which(alldata_subset$sex=="Female"),]
 alldata_subsetM <- alldata_subset[which(alldata_subset$sex=="Male"),]
+#############
 
 ###############
 ## Split into training and test
 set.seed(3158)
 trainIDs <- sample(alldata_subset_prev$subjectID, floor((2/3)*nrow(alldata_subset_prev)), replace=F)
-
 traindat <- alldata_subset_prev[which(alldata_subset_prev$subjectID %in% trainIDs),]
 traindat <- traindat[which(!(traindat$subjectID %in% to_exclude[,1])),]
-
 testdat <- alldata_subset_prev[which(!(alldata_subset_prev$subjectID %in% trainIDs)),]
 testdat <- testdat[which(!(testdat$subjectID %in% to_exclude[,1])),]
-
 ###### Split into men and women
-
 traindatF <- traindat[which(traindat$sex=="Female"),]
 testdatF <- testdat[which(testdat$sex=="Female"),]
-
 traindatM <- traindat[which(traindat$sex=="Male"),]
 testdatM <- testdat[which(testdat$sex=="Male"),]
+#############
 
 ###############
-
+## Standardize PRS
 traindatF$type2_diabetesPRS_std <- traindatF$type2_diabetesPRS/sd(alldata_subsetF$type2_diabetesPRS) 
 traindatF$triglyceridesPRS_std <- traindatF$triglyceridesPRS/sd(alldata_subsetF$triglyceridesPRS) 
 traindatF$total_cholesterolPRS_std <- traindatF$total_cholesterolPRS/sd(alldata_subsetF$total_cholesterolPRS) 
@@ -153,15 +145,17 @@ testdatM$sbpPRS_std <- testdatM$sbpPRS/sd(alldata_subsetM$sbpPRS)
 testdatM$dbpPRS_std <- testdatM$dbpPRS/sd(alldata_subsetM$dbpPRS) 
 testdatM$alcohol_consumptionPRS_std <- testdatM$alcohol_consumptionPRS/sd(alldata_subsetM$alcohol_consumptionPRS) 
 testdatM$strokePRS_std <- testdatM$strokePRS/sd(alldata_subsetM$strokePRS) 
+#############
 
 
 ##################
-### Combined PRS (all participants)
+### Construct composite PRS
 ##################
 
 ##################
 ## Females
 
+#### Fit model with all 25 PRS and 10 PCs
 ACjoint_F_model <- coxph(formula = Surv(age_entry, death_age, death_ind) ~ type2_diabetesPRS_std + triglyceridesPRS_std + total_cholesterolPRS_std +
 	smoking_statusPRS_std + sleep_durationPRS_std + parkinsonsPRS_std + pancreatic_cancerPRS_std + lung_cancerPRS_std + alzheimersPRS_std + 
 	ldl_cholesterolPRS_std + hypertensionPRS_std + heart_diseasePRS_std + hdl_cholesterolPRS_std + fasting_plasma_glucosePRS_std + 
@@ -169,46 +163,45 @@ ACjoint_F_model <- coxph(formula = Surv(age_entry, death_age, death_ind) ~ type2
 	dbpPRS_std + alcohol_consumptionPRS_std + strokePRS_std + PC1 + PC2 + PC3 + PC4 + 
 	PC5 + PC6 + PC7 + PC8 + PC9 + PC10, data=traindatF)
 
+#### Create dataset based on training data with no PCs in order to generate cPRS in training data
 ACjoint_F_newdata <- traindatF[,which(grepl("PRS",names(traindatF)))]
 ACjoint_F_newdata$PC1 <- ACjoint_F_newdata$PC2 <- ACjoint_F_newdata$PC3 <- ACjoint_F_newdata$PC4 <- ACjoint_F_newdata$PC5 <- rep(0, nrow(traindatF))
 ACjoint_F_newdata$PC6 <- ACjoint_F_newdata$PC7 <- ACjoint_F_newdata$PC8 <- ACjoint_F_newdata$PC9 <- ACjoint_F_newdata$PC10 <- rep(0, nrow(traindatF))
 LPF <- predict(ACjoint_F_model, newdata=ACjoint_F_newdata,type="lp")
 
-
-table(testdatF$death_ind)
+#### Create dataset based on test data with no PCs in order to generate cPRS in test data
 testdatF_noPC <- testdatF
 testdatF_noPC$PC1 <- testdatF_noPC$PC2 <- testdatF_noPC$PC3 <- testdatF_noPC$PC4 <- testdatF_noPC$PC5 <- testdatF_noPC$PC6 <- rep(0, nrow(testdatF_noPC))
 testdatF_noPC$PC7 <- testdatF_noPC$PC8 <- testdatF_noPC$PC9 <- testdatF_noPC$PC10 <- rep(0, nrow(testdatF_noPC))
 testdatF$LPF_test <- predict(ACjoint_F_model, newdata=testdatF_noPC,type="lp")
-testdatF$LPF_std <- testdatF$LPF_test/sd(LPF)
+testdatF$LPF_std <- testdatF$LPF_test/sd(LPF) ## standardize cPRS in test based on SD of cPRS in training
 
+##### Fit Cox PH model based on standardized cPRS in test data
+table(testdatF$death_ind)
 summary(coxph(formula = Surv(age_entry, death_age, death_ind) ~ LPF_std + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10,
 	data=testdatF))$coefficients
 summary(coxph(formula = Surv(age_entry, death_age, death_ind) ~ LPF_std + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10,
 	data=testdatF))$conf.int
 
-###########
 #### Estimate AUC
 cph(formula = Surv(age_entry, death_age, death_ind) ~ LPF_std, data=testdatF, x=TRUE, y=TRUE)$stats
 
-##### quantiles of the data
+##### Fit Cox PH using quantiles of cPRS
 testdatF$LPquantile <- cut(testdatF$LPF_test, breaks=c(min(testdatF$LPF_test), quantile(LPF, c(0.05, 0.4, 0.6, 0.95), type=8), max(testdatF$LPF_test)), include.lowest=TRUE)
 table(testdatF$LPquantile)
-testdatF$LPquantile <- relevel(testdatF$LPquantile, ref = names(table(testdatF$LPquantile))[3])
+testdatF$LPquantile <- relevel(testdatF$LPquantile, ref = names(table(testdatF$LPquantile))[3]) ## make middle 20% the reference
 testquantF <- summary(coxph(formula = Surv(age_entry, death_age, death_ind) ~ as.factor(LPquantile) + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10,
 	data=testdatF))
 testquantF$coefficients
 testquantF$conf.int
-
 table(testdatF$LPquantile,testdatF$death_ind)
 
-#### top 5% vs. bottom 5%
-testdatF$LPquantile_topbottom <- relevel(testdatF$LPquantile, ref = names(table(testdatF$LPquantile))[2])
+#### Same as above, but comparing top 5% vs. bottom 5%
+testdatF$LPquantile_topbottom <- relevel(testdatF$LPquantile, ref = names(table(testdatF$LPquantile))[2]) ## now the reference is the bottom 5%
 testquantF_topbottom <- summary(coxph(formula = Surv(age_entry, death_age, death_ind) ~ as.factor(LPquantile_topbottom) + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10,
 	data=testdatF))
 testquantF_topbottom$coefficients
 testquantF_topbottom$conf.int
-
 table(testdatF$LPquantile_topbottom,testdatF$death_ind)
 
 
@@ -216,6 +209,7 @@ table(testdatF$LPquantile_topbottom,testdatF$death_ind)
 ##################
 ## Males
 
+#### Fit model with all 25 PRS and 10 PCs
 ACjoint_M_model <- coxph(formula = Surv(age_entry, death_age, death_ind) ~ type2_diabetesPRS_std + triglyceridesPRS_std + total_cholesterolPRS_std +
 	smoking_statusPRS_std + sleep_durationPRS_std + prostate_cancerPRS_std + parkinsonsPRS_std + pancreatic_cancerPRS_std + lung_cancerPRS_std + alzheimersPRS_std + 
 	ldl_cholesterolPRS_std + hypertensionPRS_std + heart_diseasePRS_std + hdl_cholesterolPRS_std + fasting_plasma_glucosePRS_std + 
@@ -223,47 +217,45 @@ ACjoint_M_model <- coxph(formula = Surv(age_entry, death_age, death_ind) ~ type2
 	dbpPRS_std + alcohol_consumptionPRS_std + strokePRS_std + PC1 + PC2 + PC3 + PC4 + 
 	PC5 + PC6 + PC7 + PC8 + PC9 + PC10, data=traindatM)
 
-
+#### Create dataset based on training data with no PCs in order to generate cPRS in training data
 ACjoint_M_newdata <- traindatM[,which(grepl("PRS",names(traindatM)))]
 ACjoint_M_newdata$PC1 <- ACjoint_M_newdata$PC2 <- ACjoint_M_newdata$PC3 <- ACjoint_M_newdata$PC4 <- ACjoint_M_newdata$PC5 <- rep(0, nrow(traindatM))
 ACjoint_M_newdata$PC6 <- ACjoint_M_newdata$PC7 <- ACjoint_M_newdata$PC8 <- ACjoint_M_newdata$PC9 <- ACjoint_M_newdata$PC10 <- rep(0, nrow(traindatM))
 LPM <- predict(ACjoint_M_model, newdata=ACjoint_M_newdata,type="lp")
 
-
-table(testdatM$death_ind)
+#### Create dataset based on test data with no PCs in order to generate cPRS in test data
 testdatM_noPC <- testdatM
 testdatM_noPC$PC1 <- testdatM_noPC$PC2 <- testdatM_noPC$PC3 <- testdatM_noPC$PC4 <- testdatM_noPC$PC5 <- testdatM_noPC$PC6 <- rep(0, nrow(testdatM_noPC))
 testdatM_noPC$PC7 <- testdatM_noPC$PC8 <- testdatM_noPC$PC9 <- testdatM_noPC$PC10 <- rep(0, nrow(testdatM_noPC))
 testdatM$LPM_test <- predict(ACjoint_M_model, newdata=testdatM_noPC,type="lp")
-testdatM$LPM_std <- testdatM$LPM_test/sd(LPM)
+testdatM$LPM_std <- testdatM$LPM_test/sd(LPM) ## standardize cPRS in test based on SD of cPRS in training
 
+##### Fit Cox PH model based on standardized cPRS in test data
+table(testdatM$death_ind)
 summary(coxph(formula = Surv(age_entry, death_age, death_ind) ~ LPM_std + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10,
 	data=testdatM))$coefficients
 summary(coxph(formula = Surv(age_entry, death_age, death_ind) ~ LPM_std + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10,
 	data=testdatM))$conf.int
 
-###########
 #### Estimate AUC
 cph(formula = Surv(age_entry, death_age, death_ind) ~ LPM_std, data=testdatM, x=TRUE, y=TRUE)$stats
 
-##### quantiles of the data
+##### Fit Cox PH using quantiles of cPRS
 testdatM$LPquantile <- cut(testdatM$LPM_test, breaks=c(min(testdatM$LPM_test), quantile(LPM, c(0.05, 0.4, 0.6, 0.95), type=8), max(testdatM$LPM_test)), include.lowest=TRUE)
 table(testdatM$LPquantile)
-testdatM$LPquantile <- relevel(testdatM$LPquantile, ref = names(table(testdatM$LPquantile))[3])
+testdatM$LPquantile <- relevel(testdatM$LPquantile, ref = names(table(testdatM$LPquantile))[3]) ## make middle 20% the reference
 testquantM <- summary(coxph(formula = Surv(age_entry, death_age, death_ind) ~ as.factor(LPquantile) + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10,
 	data=testdatM))
 testquantM$coefficients
 testquantM$conf.int
-
 table(testdatM$LPquantile,testdatM$death_ind)
 
-#### top 5% vs. bottom 5%
-testdatM$LPquantile_topbottom <- relevel(testdatM$LPquantile, ref = names(table(testdatM$LPquantile))[2])
+#### Same as above, but comparing top 5% vs. bottom 5%
+testdatM$LPquantile_topbottom <- relevel(testdatM$LPquantile, ref = names(table(testdatM$LPquantile))[2]) ## now the reference is the bottom 5%
 testquantM_topbottom <- summary(coxph(formula = Surv(age_entry, death_age, death_ind) ~ as.factor(LPquantile_topbottom) + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10,
 	data=testdatM))
 testquantM_topbottom$coefficients
 testquantM_topbottom$conf.int
-
 table(testdatM$LPquantile_topbottom,testdatM$death_ind)
 
 
