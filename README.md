@@ -11,9 +11,9 @@ Code and data for composite PRS analysis (Meisner et al., AJHG, 2020)
 	+ RS ID
 	+ Effect Allele
 	+ Effect Allele Frequency
-	+ Beta: estimated association between the SNP and the trait (e.g., regression coefficient); reported association is for the effect allele
-	+ Beta_weight_F: re-weighted Beta for calculating composite PRS described in Meisner et al. _for women_ 
-	+ Beta_weight_M: re-weighted Beta for calculating composite PRS described in Meisner et al. _for men_
+	+ Beta: estimated association between the SNP and the trait (e.g., regression coefficient); reported association is for the effect allele (used to construct the trait-specific PRS)
+	+ Beta_weight_F: re-weighted Beta for each variant to calculate the composite PRS described in Meisner et al. _for women_ 
+	+ Beta_weight_M: re-weighted Beta for each variant to calculate the composite PRS described in Meisner et al. _for men_
 * Important notes:
 	1. For women, the Beta_weight_F = NA when Trait = "prostate_cancer". These prostate cancer SNPs should not be included in the calculation of the composite PRS for women. The same is true for Beta_weight_M and Trait = "breast_cancer" for men. 
 	2. Two of the SNPs in the heart disease PRS were discovered via a recessive model: rs12976411 and rs11830157. This influences how the heart disease PRS, and thus the composite PRS, are calculated. 
