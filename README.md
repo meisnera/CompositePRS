@@ -2,7 +2,7 @@
 
 Code and data for composite PRS analysis (Meisner et al., AJHG, 2020)
 
-### allsnp_weights.csv: list of SNPs and weights for disease and mortality risk factor PRS analyzed in Meisner et al. (AJHG, 2020)
+### allsnp_weights.csv: list of SNPs and weights for disease and mortality risk factor PRS and sex-specific composite PRS analyzed in Meisner et al. (AJHG, 2020)
 
 * This dataset includes the following variables:
 	+ Trait
